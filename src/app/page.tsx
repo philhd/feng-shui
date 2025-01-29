@@ -18,14 +18,56 @@ export default function Home() {
     generateFurniture(10),
   );
   const [visualAppeal, setVisualAppeal] = useState<number>(50);
+  const [activePiece, setActivePiece] = useState<string | null>(null);
+  const [mouseDown, setMouseDown] = useState<boolean>(false);
 
-  // Dragging state
-  const [isDragging, setIsDragging] = useState(false);
-  const [activeItem, setActiveItem] = useState<Furniture | null>(null);
-  const [mouseOffsetX, setMouseOffsetX] = useState(0);
-  const [mouseOffsetY, setMouseOffsetY] = useState(0);
+  // Store the initial mouse position relative to the piece
+  const [offsetX, setOffsetX] = useState<number>(0);
+  const [offsetY, setOffsetY] = useState<number>(0);
 
-  // Calculate visual appeal
+  // Event handlers for drag-and-drop functionality
+  const handleMouseDown = (e: React.MouseEvent, pieceId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (mouseDown) return;
+
+    setMouseDown(true);
+    setActivePiece(pieceId);
+
+    // Calculate offset to keep the drag point consistent
+    const rect = e.currentTarget.getBoundingClientRect();
+    setOffsetX(e.clientX - rect.left);
+    setOffsetY(e.clientY - rect.top);
+  };
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (!mouseDown || !activePiece) return;
+
+      // Calculate new position based on mouse coordinates
+      const newX = e.clientX - offsetX;
+      const newY = e.clientY - offsetY;
+
+      setFurniture(
+        furniture.map((piece) => {
+          if (piece.id === activePiece) {
+            return { ...piece, x: newX, y: newY };
+          }
+          return piece;
+        }),
+      );
+    },
+    [mouseDown, activePiece, offsetX, offsetY, furniture],
+  );
+
+  const handleMouseUp = () => {
+    setMouseDown(false);
+    setActivePiece(null);
+    calculateVisualAppeal();
+  };
+
+  // Calculate visual appeal based on furniture arrangement
   const calculateVisualAppeal = useCallback(() => {
     let appeal = 50;
 
@@ -39,11 +81,12 @@ export default function Home() {
         const dy = piece1.y - piece2.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
 
-        if (distance < 100) {
-          appeal -= 1;
+        // Penalize if pieces are too close
+        if (distance < 50) {
+          appeal -= 2;
         }
 
-        // Color similarity
+        // Reward for color similarity
         const colorDiff = Math.abs(
           parseInt(piece1.color.replace("#", ""), 16) -
             parseInt(piece2.color.replace("#", ""), 16),
@@ -55,66 +98,24 @@ export default function Home() {
       }
     }
 
-    setVisualAppeal(Math.max(0, Math.min(100, appeal)));
+    // Keep appeal within bounds
+    appeal = Math.max(0, Math.min(100, appeal));
+    setVisualAppeal(appeal);
   }, [furniture]);
 
-  // Drag and drop handlers
-  const handleMouseDown = useCallback(
-    (event: React.MouseEvent<HTMLDivElement>, id: string) => {
-      event.preventDefault();
-
-      const piece = furniture.find((item) => item.id === id);
-      if (!piece) return;
-
-      const rect = event.currentTarget.getBoundingClientRect();
-      setMouseOffsetX(event.clientX - rect.left - piece.x);
-      setMouseOffsetY(event.clientY - rect.top - piece.y);
-      setIsDragging(true);
-      setActiveItem(piece);
-    },
-    [furniture],
-  );
-
-  const handleMouseMove = useCallback(
-    (event: React.MouseEvent<HTMLDivElement>) => {
-      if (!isDragging) return;
-
-      const newFurniture = furniture.map((item) => {
-        if (activeItem?.id === item.id) {
-          return {
-            ...item,
-            x: event.clientX - mouseOffsetX,
-            y: event.clientY - mouseOffsetY,
-          };
-        }
-        return item;
-      });
-
-      setFurniture(newFurniture);
-      calculateVisualAppeal();
-    },
-    [isDragging, activeItem?.id, mouseOffsetX, mouseOffsetY],
-  );
-
-  const handleMouseUp = useCallback(() => {
-    setIsDragging(false);
-    setActiveItem(null);
-  }, []);
-
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-Gray-100">
       <div className="flex h-screen">
         {/* Left side: Furniture arrangement area */}
-        <div
-          className="flex-1 p-8 relative"
-          style={{ width: "70%" }}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-        >
+        <div className="flex-1 p-8 relative" style={{ width: "70%" }}>
           {furniture.map((piece) => (
             <div
               key={piece.id}
-              className="absolute cursor-Grab active:cursor-grabbing hover:bg-opacity-80"
+              className="absolute cursor-grab"
+              onMouseDown={(e) => handleMouseDown(e, piece.id)}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onContextMenu={(e) => e.preventDefault()}
               style={{
                 width: `${piece.width}px`,
                 height: `${piece.height}px`,
@@ -124,9 +125,8 @@ export default function Home() {
                 justifyContent: "center",
                 alignItems: "center",
                 boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+                transform: `translate(${piece.x}px, ${piece.y}px)`,
               }}
-              onMouseDown={(e) => handleMouseDown(e, piece.id)}
-              onMouseMove={handleMouseMove}
             >
               {piece.type}
             </div>
